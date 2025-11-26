@@ -1,5 +1,6 @@
 import pymorphy2
 import string
+import pytest
 
 
 def _clean_word(word):
@@ -9,7 +10,7 @@ def _clean_word(word):
     return word
 
 
-def split_by_words(morph, text):
+async def split_by_words(morph, text):
     """Учитывает знаки пунктуации, регистр и словоформы, выкидывает предлоги."""
     words = []
     for word in text.split():
@@ -20,18 +21,19 @@ def split_by_words(morph, text):
     return words
 
 
-def test_split_by_words():
+@pytest.mark.asyncio
+async def test_split_by_words():
     # Экземпляры MorphAnalyzer занимают 10-15Мб RAM т.к. загружают в память много данных
     # Старайтесь организовать свой код так, чтоб создавать экземпляр MorphAnalyzer заранее и в единственном числе
     morph = pymorphy2.MorphAnalyzer()
-
-    assert split_by_words(morph, "Во-первых, он хочет, чтобы") == [
+    result = await split_by_words(morph, "Во-первых, он хочет, чтобы")
+    assert result == [
         "во-первых",
         "хотеть",
         "чтобы",
     ]
-
-    assert split_by_words(morph, "«Удивительно, но это стало началом!»") == [
+    result = await split_by_words(morph, "«Удивительно, но это стало началом!»")
+    assert result == [
         "удивительно",
         "это",
         "стать",

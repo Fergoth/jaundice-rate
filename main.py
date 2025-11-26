@@ -56,9 +56,13 @@ class ArticleResult:
     """
 
 
+RESPONSE_TIMEOUT = 1
+MORPH_TIMEOUT = 3
+
+
 async def process_article(session, morph, charged_words, url, results):
     try:
-        async with timeout(0.5):
+        async with timeout(1):
             html = await fetch(session, url)
     except aiohttp.ClientError:
         results.append(ArticleResult(url, ProcessingStatus.FETCH_ERROR))
@@ -71,9 +75,13 @@ async def process_article(session, morph, charged_words, url, results):
     except ArticleNotFound:
         results.append(ArticleResult(url, ProcessingStatus.PARSING_ERROR))
         return
-    with catchtime() as morph_time:
-        await asyncio.sleep(0.2)
-        words = split_by_words(morph, sanitized_text)
+    try:
+        async with timeout(MORPH_TIMEOUT):
+            with catchtime() as morph_time:
+                words = await split_by_words(morph, sanitized_text)
+    except asyncio.TimeoutError:
+        results.append(ArticleResult(url, ProcessingStatus.TIMEOUT))
+        return
     logger.info(f"Анализ закончен за {morph_time():.5f} сек")
     score = calculate_jaundice_rate(words, charged_words=charged_words)
     results.append(ArticleResult(url, ProcessingStatus.OK, len(words), score))
@@ -107,5 +115,4 @@ async def main():
 if __name__ == "__main__":
     logger.setLevel(logging.INFO)
     logger.addHandler(logging.StreamHandler())
-
     asyncio.run(main())
