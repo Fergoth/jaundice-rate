@@ -1,11 +1,12 @@
 import asyncio
+import json
+import logging
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
 
 import aiohttp
-import logging
 import anyio
 import pymorphy2
 from async_timeout import timeout
@@ -24,6 +25,10 @@ def catchtime():
     t2 = time.perf_counter()
 
 
+CHARGED_FILEPATHES = [
+    "charged_dict/negative_words.txt",
+    "charged_dict/positive_words.txt",
+]
 TEST_ARTICLES = [
     "https://inosmi.ru/20251126/su-57-275814.html",
     "https://lenta.ru/brief/2021/08/26/afg_terror/",
@@ -56,13 +61,25 @@ class ArticleResult:
     """
 
 
+class MyJsonEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, ArticleResult):
+            return {
+                "url": obj.url,
+                "status": obj.status.value,
+                "words_count": obj.words_count,
+                "score": obj.score,
+            }
+        return json.JSONEncoder.default(self, obj)
+
+
 RESPONSE_TIMEOUT = 1
 MORPH_TIMEOUT = 3
 
 
 async def process_article(session, morph, charged_words, url, results):
     try:
-        async with timeout(1):
+        async with timeout(RESPONSE_TIMEOUT):
             html = await fetch(session, url)
     except aiohttp.ClientError:
         results.append(ArticleResult(url, ProcessingStatus.FETCH_ERROR))
@@ -93,26 +110,29 @@ async def fetch(session, url):
         return await response.text()
 
 
-def load_charged_words(filepath):
-    with open(filepath, "r", encoding="utf-8") as f:
-        return f.read().splitlines()
+def load_charged_words(filepathes=CHARGED_FILEPATHES):
+    chardged_words = []
+    for filepath in filepathes:
+        with open(filepath, "r", encoding="utf-8") as f:
+            chardged_words.extend(f.read().splitlines())
+    return chardged_words
 
 
-async def main():
-    charged_words = load_charged_words("charged_dict/negative_words.txt")
-    charged_words.extend(load_charged_words("charged_dict/positive_words.txt"))
+async def main(urls):
+    charged_words = load_charged_words(CHARGED_FILEPATHES)
     morph = pymorphy2.MorphAnalyzer()
     results = []
     async with aiohttp.ClientSession() as session:
         async with anyio.create_task_group() as tg:
-            for url in TEST_ARTICLES:
+            for url in urls:
                 tg.start_soon(
                     process_article, session, morph, charged_words, url, results
                 )
-    print(results)
+    logger.info(results)
+    return results
 
 
 if __name__ == "__main__":
     logger.setLevel(logging.INFO)
     logger.addHandler(logging.StreamHandler())
-    asyncio.run(main())
+    asyncio.run(main(TEST_ARTICLES))
