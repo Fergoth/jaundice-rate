@@ -7,7 +7,7 @@ from pymorphy2 import MorphAnalyzer
 
 from main import MyJsonEncoder, load_charged_words, process_article
 
-MAX_URLS = 2
+MAX_URLS = 5
 
 
 async def handle(request, morph, charged_words):
