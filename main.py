@@ -10,6 +10,7 @@ import aiohttp
 import anyio
 import pymorphy2
 from async_timeout import timeout
+import pytest
 
 from adapters.exceptions import ArticleNotFound
 from adapters.inosmi_ru import sanitize
@@ -102,6 +103,42 @@ async def process_article(session, morph, charged_words, url, results):
     logger.info(f"Анализ закончен за {morph_time():.5f} сек")
     score = calculate_jaundice_rate(words, charged_words=charged_words)
     results.append(ArticleResult(url, ProcessingStatus.OK, len(words), score))
+
+
+@pytest.mark.asyncio
+async def test_process_article():
+    charged_words = load_charged_words(CHARGED_FILEPATHES)
+    morph = pymorphy2.MorphAnalyzer()
+    async with aiohttp.ClientSession() as session:
+        # non inosmi site
+        url = "https://www.google.com"
+        results = []
+        await process_article(session, morph, charged_words, url, results)
+        assert results[0].status == ProcessingStatus.PARSING_ERROR
+        # non existing url
+        url = "https://inosmi.ru/20251126/su-57-275814.html"
+        results = []
+        await process_article(session, morph, charged_words, url, results)
+        assert results[0].status == ProcessingStatus.FETCH_ERROR
+        # existing url
+        url = "https://inosmi.ru/20251126/polsha-275819902.html"
+        results = []
+        await process_article(session, morph, charged_words, url, results)
+        assert results[0].status == ProcessingStatus.OK
+        # Timeout request
+        global RESPONSE_TIMEOUT
+        RESPONSE_TIMEOUT = 0.00001
+        url = "https://inosmi.ru/20251126/polsha-275819902.html"
+        results = []
+        await process_article(session, morph, charged_words, url, results)
+        assert results[0].status == ProcessingStatus.TIMEOUT
+        # Timeout morph
+        global MORPH_TIMEOUT
+        MORPH_TIMEOUT = 0.001
+        url = "https://inosmi.ru/20251126/polsha-275819902.html"
+        results = []
+        await process_article(session, morph, charged_words, url, results)
+        assert results[0].status == ProcessingStatus.TIMEOUT
 
 
 async def fetch(session, url):
